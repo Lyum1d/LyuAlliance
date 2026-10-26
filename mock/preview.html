@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>AgentMesh · 界面原型</title>
+<style>
+  :root{
+    --bg:#F6F7F9; --surface:#FFFFFF; --border:#E6E8EC; --border-soft:#F0F1F4;
+    --text:#14161A; --muted:#6B7280; --faint:#9CA3AF;
+    --blue:#2563EB; --blue-soft:#EFF4FF; --blue-line:#BFD3FE;
+    --green:#16A34A; --green-soft:#F0FDF4;
+    --red:#DC2626; --red-soft:#FEF2F2;
+    --amber:#D97706; --amber-soft:#FFFBEB;
+    --gray:#9CA3AF; --indigo:#4F46E5; --indigo-soft:#EEF2FF;
+    --shadow:0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.06);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    font-size:13px; line-height:1.55; -webkit-font-smoothing:antialiased;
+  }
+  .app{display:flex;flex-direction:column;height:100vh;min-width:1240px}
+
+  /* ---------- 顶栏 ---------- */
+  .topbar{
+    height:54px;flex:0 0 54px;display:flex;align-items:center;gap:18px;
+    padding:0 18px;background:var(--surface);border-bottom:1px solid var(--border);
+  }
+  .brand{display:flex;align-items:center;gap:9px;font-weight:600;letter-spacing:-.01em}
+  .mark{width:22px;height:22px;border-radius:6px;background:var(--text);position:relative;flex:0 0 22px}
+  .mark::before,.mark::after{content:"";position:absolute;background:#fff;border-radius:50%}
+  .mark::before{width:5px;height:5px;left:5px;top:5px}
+  .mark::after{width:5px;height:5px;right:5px;bottom:5px}
+  .mark i{position:absolute;width:5px;height:5px;background:#fff;border-radius:50%;right:5px;top:5px;opacity:.55}
+  .brand small{color:var(--faint);font-weight:400;font-size:11px;margin-left:2px}
+  .nav{display:flex;gap:2px;margin-left:10px}
+  .nav button{
+    border:0;background:transparent;padding:6px 11px;border-radius:7px;cursor:pointer;
+    font:inherit;color:var(--muted);font-size:13px;
+  }
+  .nav button:hover{background:#F3F4F6;color:var(--text)}
+  .nav button.on{background:#F1F3F6;color:var(--text);font-weight:500}
+  .top-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+  .pill{
+    display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;
+    background:var(--blue-soft);color:#1E40AF;font-size:12px;font-weight:500;
+  }
+  .pill .dot{width:6px;height:6px;border-radius:50%;background:var(--blue);animation:blink 1.6s infinite}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.28}}
+  .timer{font-variant-numeric:tabular-nums;color:var(--muted);font-size:12px}
+  .btn{
+    border:1px solid var(--border);background:var(--surface);color:var(--text);
+    padding:6px 11px;border-radius:7px;font:inherit;font-size:12.5px;cursor:pointer;
+  }
+  .btn:hover{background:#FAFAFB}
+  .btn.primary{background:var(--text);border-color:var(--text);color:#fff}
+  .btn.primary:hover{background:#000}
+
+  /* ---------- 活跃 Agent 条 ---------- */
+  .strip{
+    flex:0 0 auto;display:flex;gap:12px;padding:14px 18px 4px;overflow-x:auto;
+  }
+  .agent-card{
+    background:var(--surface);border:1px solid var(--border);border-radius:11px;
+    padding:11px 13px;min-width:236px;box-shadow:var(--shadow);position:relative;overflow:hidden;
+  }
+  .agent-card.working{border-color:var(--blue-line)}
+  .agent-card.working::after{
+    content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--blue);
+  }
+  .agent-card.idle{opacity:.82}
+  .agent-card.conductor{background:linear-gradient(180deg,#FCFCFF,#fff);border-color:#DCD9FB}
+  .agent-card.conductor::after{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--indigo)}
+  .ac-head{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+  .ac-name{font-weight:500;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ac-tag{
+    font-size:10px;padding:1px 5px;border-radius:4px;background:#F3F4F6;color:var(--muted);
+    margin-left:auto;flex:0 0 auto;letter-spacing:.02em;
+  }
+  .ac-tag.native{background:var(--blue-soft);color:#1D4ED8}
+  .ac-tag.bridge{background:#FFF7ED;color:#C2410C}
+  .ac-task{font-size:12.5px;color:var(--text);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ac-task.muted{color:var(--faint)}
+  .ac-meta{font-size:11px;color:var(--faint);display:flex;gap:8px;align-items:center;margin-top:5px}
+  .hbar{height:3px;border-radius:2px;background:#EEF0F3;margin-top:8px;overflow:hidden}
+  .hbar i{display:block;height:100%;background:var(--blue);border-radius:2px;transition:width .4s}
+  .heart{display:inline-flex;align-items:center;gap:4px;color:var(--green);font-size:11px}
+  .heart b{width:5px;height:5px;border-radius:50%;background:var(--green);animation:blink 1.4s infinite;display:inline-block}
+
+  /* ---------- 主体 ---------- */
+  .main{flex:1;display:flex;min-height:0;padding:12px 18px 0;gap:12px}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow)}
+  .canvas-wrap{flex:1;min-width:0;position:relative;overflow:hidden;display:flex;flex-direction:column}
+  .canvas-head{
+    display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border-soft);
+  }
+  .canvas-head h3{margin:0;font-size:12.5px;font-weight:500}
+  .seg{display:flex;background:#F3F4F6;border-radius:7px;padding:2px;margin-left:6px}
+  .seg button{border:0;background:transparent;padding:3px 9px;border-radius:5px;font:inherit;font-size:11.5px;color:var(--muted);cursor:pointer}
+  .seg button.on{background:#fff;color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.06)}
+  .legend{margin-left:auto;display:flex;gap:11px;font-size:11px;color:var(--faint)}
+  .legend span{display:inline-flex;align-items:center;gap:4px}
+  .lg{width:7px;height:7px;border-radius:2px;display:inline-block}
+  .canvas{flex:1;position:relative;overflow:auto;background:
+    radial-gradient(circle at 1px 1px,#EDEFF2 1px,transparent 0) 0 0/22px 22px}
+  svg.wires{position:absolute;inset:0;width:900px;height:700px;pointer-events:none}
+  .node{
+    position:absolute;width:180px;height:58px;background:#fff;border:1px solid var(--border);
+    border-radius:9px;padding:8px 11px 8px 13px;box-shadow:var(--shadow);cursor:pointer;
+    transition:box-shadow .15s,transform .15s;
+  }
+  .node:hover{box-shadow:0 3px 10px rgba(16,24,40,.1);transform:translateY(-1px)}
+  .node::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0}
+  .node[data-s="done"]::before{background:var(--green)}
+  .node[data-s="running"]::before{background:var(--blue)}
+  .node[data-s="blocked"]::before{background:var(--red)}
+  .node[data-s="pending"]::before{background:#D1D5DB}
+  .node[data-s="running"]{border-color:var(--blue-line);animation:breathe 2.4s ease-in-out infinite}
+  @keyframes breathe{0%,100%{box-shadow:0 0 0 0 rgba(37,99,235,.10)}50%{box-shadow:0 0 0 5px rgba(37,99,235,.06)}}
+  .node[data-s="blocked"]{border-style:dashed;border-color:#F3C6C6}
+  .node .nt{font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .node .ns{font-size:11px;color:var(--faint);display:flex;align-items:center;gap:5px;margin-top:2px}
+  .node .np{position:absolute;left:13px;right:11px;bottom:6px;height:2px;background:#EEF0F3;border-radius:2px;overflow:hidden}
+  .node .np i{display:block;height:100%;background:var(--blue)}
+  .node.sel{outline:2px solid var(--blue);outline-offset:1px}
+  .sdot{width:6px;height:6px;border-radius:50%;flex:0 0 6px}
+
+  /* ---------- 右侧详情 ---------- */
+  .inspector{width:344px;flex:0 0 344px;overflow:auto;padding:14px 15px 18px}
+  .ins-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+  .ins-head h2{margin:0;font-size:14px;font-weight:600;letter-spacing:-.01em}
+  .badge{font-size:10.5px;padding:2px 7px;border-radius:999px;font-weight:500}
+  .b-run{background:var(--blue-soft);color:#1D4ED8}
+  .b-done{background:var(--green-soft);color:#15803D}
+  .b-blk{background:var(--red-soft);color:#B91C1C}
+  .b-pend{background:#F3F4F6;color:#4B5563}
+  .kv{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-soft);font-size:12.5px}
+  .kv:last-of-type{border-bottom:0}
+  .kv span:first-child{color:var(--muted)}
+  .kv span:last-child{text-align:right}
+  .sec{margin-top:16px}
+  .sec-t{font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px}
+  .crit{display:flex;gap:7px;font-size:12.5px;padding:4px 0;color:#374151}
+  .crit b{color:var(--green);font-weight:400;flex:0 0 auto}
+  .art{
+    display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid var(--border);
+    border-radius:7px;font-size:12px;margin-bottom:6px;background:#FCFCFD;
+  }
+  .art span:last-child{margin-left:auto;color:var(--faint);font-size:11px}
+  .actions{display:flex;gap:7px;margin-top:18px}
+  .actions .btn{flex:1;text-align:center}
+  .btn.danger{color:var(--red);border-color:#F3C6C6}
+  .btn.ghost{background:#FCFCFD}
+  .route{
+    margin-top:12px;padding:9px 10px;background:#FAFAFB;border:1px dashed var(--border);
+    border-radius:8px;font-size:11.5px;color:var(--muted);line-height:1.7;
+  }
+  .route b{color:var(--text);font-weight:500}
+
+  /* ---------- 底部时间线 ---------- */
+  .timeline{
+    flex:0 0 auto;margin:12px 18px 14px;padding:9px 14px;display:flex;align-items:center;gap:16px;
+    overflow:hidden;
+  }
+  .tl-label{font-size:11px;color:var(--faint);flex:0 0 auto;letter-spacing:.04em}
+  .tl-item{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted);white-space:nowrap}
+  .tl-item b{color:var(--text);font-weight:500}
+  .tl-time{color:var(--faint);font-variant-numeric:tabular-nums}
+
+  /* ---------- Agent 池 ---------- */
+  .pool{padding:16px 18px;overflow:auto;flex:1}
+  .pool-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(316px,1fr));gap:12px}
+  .pcard{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;box-shadow:var(--shadow)}
+  .pcard.off{opacity:.72;background:#FCFCFD}
+  .pc-top{display:flex;align-items:flex-start;gap:9px}
+  .avatar{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;font-size:12px;font-weight:600;color:#fff;flex:0 0 30px}
+  .pc-name{font-weight:500;font-size:13px}
+  .pc-sub{font-size:11px;color:var(--faint);margin-top:1px}
+  .pc-desc{font-size:12px;color:var(--muted);margin:9px 0 10px;line-height:1.6}
+  .caps{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:11px}
+  .cap{font-size:10.5px;padding:2px 7px;border-radius:5px;background:#F3F4F6;color:#4B5563}
+  .cap.hi{background:var(--blue-soft);color:#1D4ED8}
+  .pc-foot{display:flex;align-items:center;gap:8px;padding-top:10px;border-top:1px solid var(--border-soft)}
+  .ev{font-size:10.5px;color:var(--faint);margin-left:auto;font-family:ui-monospace,Menlo,monospace}
+
+  /* ---------- 计划审批 ---------- */
+  .plan{flex:1;display:flex;gap:12px;padding:16px 18px;min-height:0}
+  .plan-left{flex:1;overflow:auto;padding:15px 16px}
+  .plan-right{width:376px;flex:0 0 376px;overflow:auto;padding:15px 16px}
+  .goal{
+    background:#FCFCFD;border:1px solid var(--border);border-radius:9px;padding:10px 12px;
+    font-size:12.5px;margin-bottom:14px;color:#374151;
+  }
+  .goal span{color:var(--faint);font-size:11px;display:block;margin-bottom:3px}
+  .pnode{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--border-soft)}
+  .pnode:last-child{border-bottom:0}
+  .pnum{
+    width:20px;height:20px;border-radius:5px;background:#F3F4F6;color:var(--muted);
+    display:grid;place-items:center;font-size:10.5px;flex:0 0 20px;margin-top:1px;
+  }
+  .pnode.major .pnum{background:var(--indigo-soft);color:var(--indigo)}
+  .pbody{flex:1;min-width:0}
+  .ptitle{font-size:12.5px;font-weight:500}
+  .pmeta{font-size:11px;color:var(--faint);margin-top:2px;display:flex;gap:8px;flex-wrap:wrap}
+  .who{color:#1D4ED8}
+  .pdep{font-size:10.5px;color:var(--faint);margin-top:3px}
+  .risk{display:flex;gap:8px;font-size:12px;color:#4B5563;padding:5px 0;line-height:1.6}
+  .risk i{color:var(--amber);font-style:normal}
+  .budget{margin-top:14px;padding:11px 12px;background:#FAFAFB;border:1px solid var(--border);border-radius:9px}
+  .budget .row{display:flex;justify-content:space-between;font-size:12px;padding:3px 0}
+  .budget .row b{font-weight:500}
+  .approve{width:100%;margin-top:14px;padding:9px;border-radius:8px;border:0;background:var(--text);color:#fff;font:inherit;font-size:13px;cursor:pointer}
+  .approve:hover{background:#000}
+  .reject{width:100%;margin-top:7px;padding:9px;border-radius:8px;border:1px solid var(--border);background:#fff;font:inherit;font-size:12.5px;cursor:pointer;color:var(--muted)}
+  .hide{display:none !important}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- 顶栏 -->
+  <div class="topbar">
+    <div class="brand"><div class="mark"><i></i></div>AgentMesh<small>v0.2</small></div>
+    <div class="nav">
+      <button class="on" data-view="board">工作台</button>
+      <button data-view="plan">主脑计划</button>
+      <button data-view="pool">Agent 池</button>
+    </div>
+    <div class="top-right">
+      <span class="pill"><span class="dot"></span><b id="workingCount">2</b>&nbsp;个 Agent 工作中</span>
+      <span class="timer">本次协作 00:12:41</span>
+      <button class="btn ghost">重新扫描</button>
+      <button class="btn">设置</button>
+    </div>
+  </div>
+
+  <!-- ================= 视图 1：工作台 ================= -->
+  <div id="view-board" style="display:flex;flex-direction:column;flex:1;min-height:0">
+
+    <!-- 活跃 Agent 条 -->
+    <div class="strip">
+      <div class="agent-card working">
+        <div class="ac-head">
+          <span class="sdot" style="background:#2563EB"></span>
+          <span class="ac-name">qwen3.5:9b</span>
+          <span class="ac-tag native">native</span>
+        </div>
+        <div class="ac-task">写登录接口 · t_7</div>
+        <div class="hbar"><i style="width:62%"></i></div>
+        <div class="ac-meta"><span>62%</span><span class="heart"><b></b>2s</span><span>本地 · 免费</span></div>
+      </div>
+
+      <div class="agent-card working">
+        <div class="ac-head">
+          <span class="sdot" style="background:#2563EB"></span>
+          <span class="ac-name">WorkBuddy CLI</span>
+          <span class="ac-tag native">native</span>
+        </div>
+        <div class="ac-task">页面骨架 · t_6</div>
+        <div class="hbar"><i style="width:38%"></i></div>
+        <div class="ac-meta"><span>38%</span><span class="heart"><b></b>5s</span><span>stream-json</span></div>
+      </div>
+
+      <div class="agent-card">
+        <div class="ac-head">
+          <span class="sdot" style="background:#C2410C"></span>
+          <span class="ac-name">豆包</span>
+          <span class="ac-tag bridge">bridge</span>
+        </div>
+        <div class="ac-task muted">空闲 · CDP 通道已就绪</div>
+        <div class="ac-meta"><span>能力 web_search .95</span><span>待命中</span></div>
+      </div>
+
+      <div class="agent-card conductor">
+        <div class="ac-head">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 4.2 3.3 6 6 2.2 8.7 6 11 4.2 10 10H2L1 4.2Z" fill="#4F46E5"/></svg>
+          <span class="ac-name">主脑 · deepseek-flash</span>
+          <span class="ac-tag">conductor</span>
+        </div>
+        <div class="ac-task muted">休眠中 · 等下一个 digest</div>
+        <div class="ac-meta"><span>预算 21%</span><span>下次唤醒 ≤ 30s</span></div>
+      </div>
+    </div>
+
+    <!-- 主体 -->
+    <div class="main">
+      <div class="panel canvas-wrap">
+        <div class="canvas-head">
+          <h3>任务工作树</h3>
+          <div class="seg">
+            <button class="on">按状态</button>
+            <button>按 Agent</button>
+          </div>
+          <div class="legend">
+            <span><i class="lg" style="background:#2563EB"></i>运行中</span>
+            <span><i class="lg" style="background:#16A34A"></i>已完成</span>
+            <span><i class="lg" style="background:#DC2626"></i>阻塞</span>
+            <span><i class="lg" style="background:#D1D5DB"></i>待开始</span>
+          </div>
+        </div>
+        <div class="canvas">
+          <svg class="wires" viewBox="0 0 900 700">
+            <defs>
+              <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                <path d="M2 1L8 5L2 9" fill="none" stroke="#C9CFD8" stroke-width="1.5" stroke-linecap="round"/>
+              </marker>
+              <marker id="ahb" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                <path d="M2 1L8 5L2 9" fill="none" stroke="#2563EB" stroke-width="1.5" stroke-linecap="round"/>
+              </marker>
+            </defs>
+            <path d="M450 88 C450 116 240 110 240 138" fill="none" stroke="#C9CFD8" stroke-width="1.4" marker-end="url(#ah)"/>
+            <path d="M450 88 C450 116 560 110 560 138" fill="none" stroke="#C9CFD8" stroke-width="1.4" marker-end="url(#ah)"/>
+            <path d="M240 196 C240 226 440 218 440 248" fill="none" stroke="#C9CFD8" stroke-width="1.4" marker-end="url(#ah)"/>
+            <path d="M560 196 C560 226 440 218 440 248" fill="none" stroke="#C9CFD8" stroke-width="1.4" marker-end="url(#ah)"/>
+            <path d="M440 306 C440 338 240 330 240 368" fill="none" stroke="#2563EB" stroke-width="1.6" marker-end="url(#ahb)" stroke-dasharray="5 4">
+              <animate attributeName="stroke-dashoffset" from="18" to="0" dur="1.1s" repeatCount="indefinite"/>
+            </path>
+            <path d="M440 306 C440 338 560 330 560 368" fill="none" stroke="#2563EB" stroke-width="1.6" marker-end="url(#ahb)" stroke-dasharray="5 4">
+              <animate attributeName="stroke-dashoffset" from="18" to="0" dur="1.1s" repeatCount="indefinite"/>
+            </path>
+            <path d="M240 426 C240 456 400 448 400 478" fill="none" stroke="#DDE1E7" stroke-width="1.4" stroke-dasharray="3 4" marker-end="url(#ah)"/>
+            <path d="M560 426 C560 456 400 448 400 478" fill="none" stroke="#DDE1E7" stroke-width="1.4" stroke-dasharray="3 4" marker-end="url(#ah)"/>
+            <path d="M400 536 L400 588" fill="none" stroke="#DDE1E7" stroke-width="1.4" stroke-dasharray="3 4" marker-end="url(#ah)"/>
+          </svg>
+
+          <div class="node" data-s="done" style="left:360px;top:30px">
+            <div class="nt">需求澄清</div>
+            <div class="ns"><span class="sdot" style="background:#16A34A"></span>已完成 · 主脑</div>
+          </div>
+          <div class="node" data-s="done" style="left:150px;top:138px">
+            <div class="nt">技术选型</div>
+            <div class="ns"><span class="sdot" style="background:#16A34A"></span>已完成 · 手工</div>
+          </div>
+          <div class="node" data-s="done" style="left:470px;top:138px">
+            <div class="nt">数据建模</div>
+            <div class="ns"><span class="sdot" style="background:#16A34A"></span>已完成 · qwen3.5:9b</div>
+          </div>
+          <div class="node" data-s="done" style="left:350px;top:248px">
+            <div class="nt">接口设计</div>
+            <div class="ns"><span class="sdot" style="background:#16A34A"></span>已完成 · 主脑</div>
+          </div>
+          <div class="node sel" data-s="running" style="left:150px;top:368px">
+            <div class="nt">写登录接口</div>
+            <div class="ns"><span class="sdot" style="background:#2563EB"></span>运行中 · qwen3.5:9b</div>
+            <div class="np"><i style="width:62%"></i></div>
+          </div>
+          <div class="node" data-s="running" style="left:470px;top:368px">
+            <div class="nt">页面骨架</div>
+            <div class="ns"><span class="sdot" style="background:#2563EB"></span>运行中 · WorkBuddy</div>
+            <div class="np"><i style="width:38%"></i></div>
+          </div>
+          <div class="node" data-s="blocked" style="left:310px;top:478px">
+            <div class="nt">单元测试</div>
+            <div class="ns"><span class="sdot" style="background:#DC2626"></span>阻塞 · 等 2 个前置</div>
+          </div>
+          <div class="node" data-s="pending" style="left:310px;top:588px">
+            <div class="nt">部署脚本</div>
+            <div class="ns"><span class="sdot" style="background:#D1D5DB"></span>待开始</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右侧详情 -->
+      <div class="panel inspector">
+        <div class="ins-head">
+          <h2>写登录接口</h2>
+          <span class="badge b-run">运行中</span>
+        </div>
+        <div style="font-size:11px;color:var(--faint);margin-bottom:6px">t_7 · 第 1 次尝试 · 已运行 3 分 12 秒</div>
+
+        <div class="kv"><span>执行者</span><span><b>qwen3.5:9b</b> <span style="color:#2563EB">native</span></span></div>
+        <div class="kv"><span>依赖</span><span>接口设计 ✓</span></div>
+        <div class="kv"><span>心跳</span><span style="color:#15803D">2 秒前 · 正常</span></div>
+        <div class="kv"><span>Token</span><span>3,241 / 8,000</span></div>
+
+        <div class="sec">
+          <div class="sec-t">验收标准</div>
+          <div class="crit"><b>✓</b><span>POST /login 返回 JWT，有效期 2h</span></div>
+          <div class="crit"><b>✓</b><span>密码错误返回 401，不泄露用户是否存在</span></div>
+          <div class="crit"><b>✓</b><span>连续 5 次失败锁定 10 分钟</span></div>
+        </div>
+
+        <div class="sec">
+          <div class="sec-t">产出</div>
+          <div class="art"><span style="color:#2563EB">◈</span><span>auth/login.py</span><span>2.1 KB</span></div>
+          <div class="art"><span style="color:#2563EB">◈</span><span>接口说明.md</span><span>1.4 KB</span></div>
+        </div>
+
+        <div class="sec">
+          <div class="sec-t">为什么选它</div>
+          <div class="route">
+            <b>qwen3.5:9b</b> 得分 <b>0.71</b>，高于 deepseek-r1:7b 的 0.52<br>
+            能力匹配 0.60 ｜ 健康 1.0 ｜ 负载空闲 ｜ 本地免费
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="btn danger">取消</button>
+          <button class="btn">交接</button>
+          <button class="btn primary">验收</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 时间线 -->
+    <div class="panel timeline">
+      <span class="tl-label">事件流</span>
+      <span class="tl-item"><span class="tl-time">17:42:03</span><b>qwen3.5:9b</b> 开始写登录接口</span>
+      <span class="tl-item"><span class="tl-time">17:41:55</span>前置就绪，t_7 转为 <b>ready</b></span>
+      <span class="tl-item"><span class="tl-time">17:38:20</span>主脑派活给 <b>WorkBuddy CLI</b></span>
+      <span class="tl-item"><span class="tl-time">17:31:07</span>你批准了 <b>12 节点</b>计划</span>
+    </div>
+  </div>
+
+  <!-- ================= 视图 2：主脑计划 ================= -->
+  <div id="view-plan" class="hide" style="display:flex;flex-direction:column;flex:1;min-height:0">
+    <div class="plan">
+      <div class="panel plan-left">
+        <div class="goal"><span>目标</span>做一个带登录的待办应用，前端 React，后端 FastAPI，能本地跑起来</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <div style="font-size:12.5px;font-weight:500">主脑拆出 12 个节点</div>
+          <span class="badge b-pend">待你批准</span>
+          <span style="margin-left:auto;font-size:11px;color:var(--faint)">可逐节点修改</span>
+        </div>
+
+        <div class="pnode major">
+          <div class="pnum">1</div>
+          <div class="pbody">
+            <div class="ptitle">需求澄清 <span style="color:var(--faint);font-weight:400">· 已由主脑完成</span></div>
+            <div class="pmeta">产出：需求边界清单（3 条）</div>
+          </div>
+        </div>
+        <div class="pnode">
+          <div class="pnum">2</div>
+          <div class="pbody">
+            <div class="ptitle">技术选型</div>
+            <div class="pmeta"><span class="who">你 · 人工</span><span>预计 5 分钟</span></div>
+          </div>
+        </div>
+        <div class="pnode">
+          <div class="pnum">3</div>
+          <div class="pbody">
+            <div class="ptitle">数据建模</div>
+            <div class="pmeta"><span class="who">qwen3.5:9b</span><span>long_context .95</span><span>≈ 6k token</span></div>
+            <div class="pdep">依赖：2</div>
+          </div>
+        </div>
+        <div class="pnode">
+          <div class="pnum">4</div>
+          <div class="pbody">
+            <div class="ptitle">接口设计</div>
+            <div class="pmeta"><span class="who">主脑 · deepseek-flash</span><span>≈ 4k token</span></div>
+            <div class="pdep">依赖：2, 3</div>
+          </div>
+        </div>
+        <div class="pnode">
+          <div class="pnum">5</div>
+          <div class="pbody">
+            <div class="ptitle">写登录接口</div>
+            <div class="pmeta"><span class="who">qwen3.5:9b</span><span>code .60</span><span>≈ 8k token</span></div>
+            <div class="pdep">依赖：4</div>
+          </div>
+        </div>
+        <div class="pnode">
+          <div class="pnum">6</div>
+          <div class="pbody">
+            <div class="ptitle">页面骨架</div>
+            <div class="pmeta"><span class="who">WorkBuddy CLI</span><span>doc .90</span><span>≈ 7k token</span></div>
+            <div class="pdep">依赖：4</div>
+          </div>
+        </div>
+        <div class="pnode">
+          <div class="pnum">7</div>
+          <div class="pbody">
+            <div class="ptitle">检索同类实现的最佳实践</div>
+            <div class="pmeta"><span class="who" style="color:#C2410C">豆包 · 桥接</span><span>web_search .95</span><span>需接管桌面</span></div>
+            <div class="pdep">依赖：4 ｜ 与 5、6 并行</div>
+          </div>
+        </div>
+        <div class="pnode">
+          <div class="pnum">8</div>
+          <div class="pbody">
+            <div class="ptitle">单元测试</div>
+            <div class="pmeta"><span class="who">Codex CLI</span><span>默认未启用，需你手动开</span></div>
+            <div class="pdep">依赖：5, 6</div>
+          </div>
+        </div>
+        <div class="pnode">
+          <div class="pnum">9</div>
+          <div class="pbody">
+            <div class="ptitle">部署脚本</div>
+            <div class="pmeta"><span class="who">qwen3.5:9b</span><span>≈ 3k token</span></div>
+            <div class="pdep">依赖：8</div>
+          </div>
+        </div>
+        <div style="padding:10px 0;font-size:11.5px;color:var(--faint)">还有 3 个节点（联调 / 文档 / 收尾）…</div>
+      </div>
+
+      <div class="panel plan-right">
+        <div class="sec-t" style="margin-top:0">主脑的理由</div>
+        <div style="font-size:12.5px;color:#374151;line-height:1.75">
+          把「写登录接口」交给本地 9B 而不是云端：鉴权代码是模板化任务，9B 足够，且能省下约 60% 的云端开销。
+          「检索最佳实践」派给豆包，因为这是唯一能联网检索的成员，且结论只需文本，不要求代码结构。
+        </div>
+
+        <div class="sec-t" style="margin-top:18px">风险</div>
+        <div class="risk"><i>▲</i><span>节点 8 依赖 Codex，若你不启用，会转本地模型，测试质量可能下降</span></div>
+        <div class="risk"><i>▲</i><span>节点 7 需要接管桌面，执行期间不要切换豆包窗口</span></div>
+        <div class="risk"><i>▲</i><span>鉴权逻辑涉及安全，建议节点 5 完成后人工过一遍代码</span></div>
+
+        <div class="budget">
+          <div class="row"><span>预计云端 token</span><b>≈ 18k</b></div>
+          <div class="row"><span>预计本地 token</span><b>≈ 42k</b></div>
+          <div class="row"><span>预计花费</span><b>¥0.03</b></div>
+          <div class="row"><span>当前余额</span><b style="color:#B45309">¥7.00</b></div>
+          <div class="row" style="border-top:1px solid var(--border);margin-top:6px;padding-top:7px">
+            <span>硬上限</span><b>200k token / 单项目</b>
+          </div>
+        </div>
+
+        <button class="approve">批准并开工</button>
+        <button class="reject">驳回，写修改意见</button>
+        <div style="font-size:11px;color:var(--faint);margin-top:10px;line-height:1.6">
+          批准后主脑只能新增节点或改派，不能删除节点、不能自己验收。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 视图 3：Agent 池 ================= -->
+  <div id="view-pool" class="hide" style="display:flex;flex-direction:column;flex:1;min-height:0">
+    <div class="pool">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <div style="font-size:13px;font-weight:500">已发现 6 个 Agent</div>
+        <span style="font-size:11.5px;color:var(--faint)">扫描时间 17:29 · 探测方式：进程 / 端口 / CLI / 配置指纹</span>
+        <button class="btn" style="margin-left:auto">重新扫描</button>
+        <button class="btn">手动添加</button>
+      </div>
+
+      <div class="pool-grid">
+        <div class="pcard">
+          <div class="pc-top">
+            <div class="avatar" style="background:#2563EB">O</div>
+            <div style="flex:1">
+              <div class="pc-name">qwen3.5:9b <span class="ac-tag native">native</span></div>
+              <div class="pc-sub">Ollama · 127.0.0.1:11434</div>
+            </div>
+            <span class="sdot" style="background:#16A34A;margin-top:6px"></span>
+          </div>
+          <div class="pc-desc">长上下文主力，262k 上下文窗口，适合读大文件、写模板化代码。</div>
+          <div class="caps"><span class="cap hi">long_context .95</span><span class="cap hi">general .70</span><span class="cap">code .60</span></div>
+          <div class="pc-foot">
+            <button class="btn">移出</button>
+            <span style="font-size:11px;color:var(--faint)">已在组内</span>
+            <span class="ev">/api/tags</span>
+          </div>
+        </div>
+
+        <div class="pcard">
+          <div class="pc-top">
+            <div class="avatar" style="background:#0F766E">W</div>
+            <div style="flex:1">
+              <div class="pc-name">WorkBuddy CLI <span class="ac-tag native">native</span></div>
+              <div class="pc-sub">codebuddy --print · stream-json</div>
+            </div>
+            <span class="sdot" style="background:#16A34A;margin-top:6px"></span>
+          </div>
+          <div class="pc-desc">文档与办公类强项，支持 json-schema 约束输出，适合生成结构化产物。</div>
+          <div class="caps"><span class="cap hi">doc .90</span><span class="cap hi">slides .85</span><span class="cap">research .75</span></div>
+          <div class="pc-foot">
+            <button class="btn">移出</button>
+            <span style="font-size:11px;color:var(--faint)">已在组内</span>
+            <span class="ev">codebuddy -p</span>
+          </div>
+        </div>
+
+        <div class="pcard">
+          <div class="pc-top">
+            <div class="avatar" style="background:#C2410C">豆</div>
+            <div style="flex:1">
+              <div class="pc-name">豆包 <span class="ac-tag bridge">bridge</span></div>
+              <div class="pc-sub">E:\Doubao\app\Doubao.exe</div>
+            </div>
+            <span class="sdot" style="background:#D97706;margin-top:6px"></span>
+          </div>
+          <div class="pc-desc">唯一能联网检索的成员。无 API，通过 CDP 操控界面，执行时会接管前台窗口。</div>
+          <div class="caps"><span class="cap hi">web_search .95</span><span class="cap hi">chinese_news .90</span><span class="cap">summarize .85</span></div>
+          <div class="pc-foot">
+            <button class="btn">移出</button>
+            <span style="font-size:11px;color:#C2410C">需接管桌面</span>
+            <span class="ev">CDP :9333</span>
+          </div>
+        </div>
+
+        <div class="pcard">
+          <div class="pc-top">
+            <div class="avatar" style="background:#7C3AED">D</div>
+            <div style="flex:1">
+              <div class="pc-name">DeepSeek Harness <span class="ac-tag bridge">bridge</span></div>
+              <div class="pc-sub">:8326 OpenAI 兼容网关 · 需 key</div>
+            </div>
+            <span class="sdot" style="background:#D97706;margin-top:6px"></span>
+          </div>
+          <div class="pc-desc">代码编写主力。本地网关要求鉴权，key 未取到，当前降级为人工桥接。</div>
+          <div class="caps"><span class="cap hi">code_write .90</span><span class="cap hi">refactor .85</span><span class="cap">debug .80</span></div>
+          <div class="pc-foot">
+            <button class="btn">移出</button>
+            <span style="font-size:11px;color:var(--faint)">已在组内</span>
+            <span class="ev">401 auth</span>
+          </div>
+        </div>
+
+        <div class="pcard off">
+          <div class="pc-top">
+            <div class="avatar" style="background:#6B7280">C</div>
+            <div style="flex:1">
+              <div class="pc-name">Codex CLI <span class="ac-tag native">native</span></div>
+              <div class="pc-sub">codex-cli 0.164.0 · exec --json</div>
+            </div>
+            <span class="sdot" style="background:#9CA3AF;margin-top:6px"></span>
+          </div>
+          <div class="pc-desc">代码能力强，但会消耗你的本地代理额度。默认关闭，需要时手动开启。</div>
+          <div class="caps"><span class="cap hi">code_write .92</span><span class="cap hi">shell .85</span><span class="cap">review .85</span></div>
+          <div class="pc-foot">
+            <button class="btn primary">邀进</button>
+            <span style="font-size:11px;color:var(--faint)">未在组内 · 默认关</span>
+            <span class="ev">消耗额度</span>
+          </div>
+        </div>
+
+        <div class="pcard off">
+          <div class="pc-top">
+            <div class="avatar" style="background:#B91C1C">R</div>
+            <div style="flex:1">
+              <div class="pc-name">deepseek-r1:7b <span class="ac-tag native">native</span></div>
+              <div class="pc-sub">Ollama · 推理向</div>
+            </div>
+            <span class="sdot" style="background:#9CA3AF;margin-top:6px"></span>
+          </div>
+          <div class="pc-desc">推理能力优于 qwen，但速度慢。适合数学/逻辑题，不适合长文。</div>
+          <div class="caps"><span class="cap hi">reasoning .80</span><span class="cap">math .75</span><span class="cap">code .55</span></div>
+          <div class="pc-foot">
+            <button class="btn primary">邀进</button>
+            <span style="font-size:11px;color:var(--faint)">未在组内</span>
+            <span class="ev">/api/tags</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const nav = document.querySelectorAll('.nav button');
+  const views = { board:'view-board', plan:'view-plan', pool:'view-pool' };
+  nav.forEach(b => b.addEventListener('click', () => {
+    nav.forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    Object.values(views).forEach(id => document.getElementById(id).classList.add('hide'));
+    document.getElementById(views[b.dataset.view]).classList.remove('hide');
+  }));
+
+  document.querySelectorAll('.node').forEach(n => {
+    n.addEventListener('click', () => {
+      document.querySelectorAll('.node').forEach(x => x.classList.remove('sel'));
+      n.classList.add('sel');
+    });
+  });
+  document.querySelectorAll('.seg button').forEach(b => {
+    b.addEventListener('click', () => {
+      b.parentElement.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+      b.classList.add('on');
+    });
+  });
+</script>
+</body>
+</html>

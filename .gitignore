@@ -1,0 +1,25 @@
+node_modules/
+.venv/
+venv/
+# 数据库不入库：含本地任务数据，且 sqlite 二进制不适合进 git
+**/data/*.db
+**/data/*.db-shm
+**/data/*.db-wal
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+*.pyo
+dist/
+build/
+*.tsbuildinfo
+tools/
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/
