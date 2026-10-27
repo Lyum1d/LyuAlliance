@@ -168,3 +168,16 @@ export interface PlanResp {
   budget: PlanBudget
   agents: PlanAgent[]
 }
+
+export interface ConductorCfg {
+  base_url: string
+  model: string
+  /** 永远只有掩码，接口不下发明文 */
+  key_masked: string
+  key_set: boolean
+  base_source: 'db' | '.env'
+  model_source: 'db' | '.env'
+  key_source: 'db' | 'env' | 'none'
+  encryption: 'dpapi' | 'plain'
+  budget_tokens: number
+}

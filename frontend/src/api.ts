@@ -1,4 +1,4 @@
-import type { Candidate, Plan, PlanResp, Snapshot } from './types'
+import type { Candidate, ConductorCfg, Plan, PlanResp, Snapshot } from './types'
 
 async function j<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(url, {
@@ -51,5 +51,17 @@ export const api = {
     j<{ ok: boolean; plan: Plan }>(`/api/plan/task/${key}`, {
       method: 'PATCH',
       body: JSON.stringify(body),
+    }),
+
+  // 主脑（云端模型）配置：接口只回掩码，明文永不下发
+  conductor: () => j<ConductorCfg>('/api/conductor'),
+  saveConductor: (body: { base_url?: string; model?: string; api_key?: string }) =>
+    j<{ ok: boolean } & ConductorCfg>('/api/conductor', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  testConductor: () =>
+    j<{ ok: boolean; model: string; latency_ms: number; reply: string }>('/api/conductor/test', {
+      method: 'POST',
     }),
 }

@@ -76,6 +76,11 @@ CREATE TABLE IF NOT EXISTS handoff(
   created_at TEXT, decided_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_handoff_to ON handoff(to_task);
+CREATE TABLE IF NOT EXISTS app_config(
+  key TEXT PRIMARY KEY, value TEXT,
+  secret INTEGER DEFAULT 0,   -- 1 = value 是 secretbox 密文
+  updated_at TEXT
+);
 """
 
 # ---------------------------------------------------------------- 种子数据
@@ -607,4 +612,33 @@ def set_task_context(tid: str, payload: dict | None) -> None:
         c = conn()
         c.execute("UPDATE task SET context=? WHERE id=?",
                   (json.dumps(payload, ensure_ascii=False) if payload else None, tid))
+        c.commit()
+
+
+# ---------------------------------------------------------------- 应用配置（主脑等）
+
+def config_pairs() -> dict[str, tuple[str, bool]]:
+    """{key: (value, secret)}。secret=1 表示 value 是密文。"""
+    with _lock:
+        c = conn()
+        rows = c.execute("SELECT key, value, secret FROM app_config").fetchall()
+    return {r[0]: (r[1], bool(r[2])) for r in rows}
+
+
+def config_set(key: str, value: str, secret: bool = False) -> None:
+    with _lock:
+        c = conn()
+        c.execute(
+            "INSERT INTO app_config(key, value, secret, updated_at) VALUES(?,?,?,?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value, "
+            "secret=excluded.secret, updated_at=excluded.updated_at",
+            (key, value, 1 if secret else 0, now_iso()),
+        )
+        c.commit()
+
+
+def config_del(key: str) -> None:
+    with _lock:
+        c = conn()
+        c.execute("DELETE FROM app_config WHERE key=?", (key,))
         c.commit()

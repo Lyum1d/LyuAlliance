@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import bridge_watch, engine, handoff, planner, sim, store
+from . import appcfg, bridge_watch, engine, handoff, planner, sim, store
 from .probe import probe, probe_and_store
 from .bus import BUS
 from .sim import route_scores
@@ -285,6 +285,43 @@ async def reset_budget() -> dict:
     store.clear_llm_usage()
     await BUS.publish("budget.reset", "user", {})
     return {"ok": True, "budget": planner.budget()}
+
+
+@app.get("/api/conductor")
+async def conductor_get() -> dict:
+    """主脑配置视图。**key 只返回掩码，任何情况下都不回原文。**"""
+    return appcfg.public()
+
+
+@app.put("/api/conductor")
+async def conductor_put(body: dict) -> dict:
+    """改主脑配置。key 缺省=不改，""=清除（回退 .env），其它=DPAPI 加密后入库。
+
+    保存后立即生效：CloudLLM 每次实例化都重新读配置，不用重启后端。
+    """
+    before = appcfg.public()
+    after = appcfg.update(body or {})
+    await BUS.publish("conductor.config", "user", {
+        "model": after["model"],
+        "base_url": after["base_url"],
+        "key_changed": before["key_masked"] != after["key_masked"],
+        "encryption": after["encryption"],
+    })
+    return {"ok": True, **after}
+
+
+@app.post("/api/conductor/test")
+async def conductor_test() -> dict:
+    """用当前配置发一个 4 token 的最小请求，验证 key / 模型 / base_url。"""
+    from .llm import BudgetExceeded, CloudLLM
+
+    try:
+        r = await CloudLLM().probe()
+    except BudgetExceeded as e:
+        raise HTTPException(409, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"{type(e).__name__}: {e}")
+    return {"ok": True, **r}
 
 
 @app.post("/api/agents/{aid}/probe")

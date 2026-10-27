@@ -8,12 +8,13 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from typing import Any
 
 import httpx
 
-from . import store
-from .config import env, env_float, env_bool
+from . import appcfg, store
+from .config import env_bool
 
 
 class BudgetExceeded(RuntimeError):
@@ -22,12 +23,15 @@ class BudgetExceeded(RuntimeError):
 
 class CloudLLM:
     def __init__(self) -> None:
-        self.base = env("CLOUD_BASE_URL", "https://api.deepseek.com").rstrip("/")
-        self.key = env("CLOUD_API_KEY")
-        self.model = env("CONDUCTOR_MODEL", "deepseek-flash")
-        self.hard_limit = int(env_float("CONDUCTOR_BUDGET_TOKENS", 200_000))
-        self.price_in = env_float("CLOUD_PRICE_IN", 0.5)    # 元 / 百万 token（估算用）
-        self.price_out = env_float("CLOUD_PRICE_OUT", 1.5)
+        # 每次实例化都重新读配置：界面上改完 key/模型保存后，下一次拆解就用新的，
+        # 不需要重启后端。配置来源见 appcfg（库 > .env > 默认）。
+        c = appcfg.effective()
+        self.base = c["base_url"].rstrip("/")
+        self.key = c["api_key"]
+        self.model = c["model"]
+        self.hard_limit = c["budget_tokens"]
+        self.price_in = c["price_in"]    # 元 / 百万 token（估算用）
+        self.price_out = c["price_out"]
 
     @property
     def configured(self) -> bool:
@@ -49,6 +53,37 @@ class CloudLLM:
             "est_cost_cny": round(cost, 4),
             "since": t["first_ts"],
             "price_note": f"估算按 ¥{self.price_in}/M 入、¥{self.price_out}/M 出；实际以账单为准",
+        }
+
+    async def probe(self) -> dict:
+        """最小请求验证连通性：key 对不对、模型名存不存在、base_url 通不通。
+
+        只发 4 个 token，成本可忽略；仍然记进账本，免得配置错时反复点测试悄悄烧钱。
+        """
+        if not self.key:
+            raise BudgetExceeded("未配置 API Key，无法测试")
+        t0 = time.time()
+        async with httpx.AsyncClient(timeout=httpx.Timeout(25, connect=8)) as c:
+            r = await c.post(
+                f"{self.base}/chat/completions",
+                headers={"Authorization": f"Bearer {self.key}", "Content-Type": "application/json"},
+                json={"model": self.model,
+                      "messages": [{"role": "user", "content": "ping"}],
+                      "max_tokens": 4},
+            )
+        ms = int((time.time() - t0) * 1000)
+        if r.status_code != 200:
+            raise RuntimeError(f"{r.status_code} {r.text[:300]}")
+        body = r.json()
+        u = body.get("usage") or {}
+        store.add_llm_usage(self.model, "conductor.probe",
+                            int(u.get("prompt_tokens") or 0),
+                            int(u.get("completion_tokens") or 0))
+        choice = (body.get("choices") or [{}])[0]
+        return {
+            "model": body.get("model") or self.model,
+            "latency_ms": ms,
+            "reply": ((choice.get("message") or {}).get("content") or "")[:40],
         }
 
     async def chat_json(

@@ -8,6 +8,7 @@ import Outline from './components/Outline'
 import Inspector from './components/Inspector'
 import AgentPool from './components/AgentPool'
 import PlanView from './components/PlanView'
+import ConductorPanel from './components/ConductorPanel'
 import Timeline from './components/Timeline'
 
 type View = 'board' | 'pool' | 'plan'
@@ -18,6 +19,7 @@ type Action = 'dispatch' | 'force' | 'cancel' | 'approve'
 export default function App() {
   const { snap, connected, error, reload } = useAgentMesh()
   const [hashView, hashTree, hashTask] = location.hash.replace('#', '').split('/')
+  const [cfgOpen, setCfgOpen] = useState(false)
   const [view, setView] = useState<View>(
     hashView === 'pool' || hashView === 'plan' ? (hashView as View) : 'board',
   )
@@ -146,6 +148,9 @@ export default function App() {
             <i />
             自动验收
           </label>
+          <button className="btn" onClick={() => setCfgOpen(true)} title="改主脑用的云端模型与 API Key">
+            主脑配置
+          </button>
           <button
             className="btn"
             onClick={async () => {
@@ -254,6 +259,8 @@ export default function App() {
       )}
 
       {view === 'plan' && <PlanView onNotify={notify} onChanged={reload} />}
+
+      {cfgOpen && <ConductorPanel onClose={() => setCfgOpen(false)} onNotify={notify} />}
 
       {toast && <div className={'toast' + (toast.err ? ' err' : '')}>{toast.msg}</div>}
     </div>
