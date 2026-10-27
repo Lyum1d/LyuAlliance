@@ -55,7 +55,13 @@ export const api = {
 
   // 主脑（云端模型）配置：接口只回掩码，明文永不下发
   conductor: () => j<ConductorCfg>('/api/conductor'),
-  saveConductor: (body: { base_url?: string; model?: string; api_key?: string }) =>
+  saveConductor: (body: {
+    base_url?: string
+    model?: string
+    api_key?: string
+    granularity?: string
+    extra_prompt?: string
+  }) =>
     j<{ ok: boolean } & ConductorCfg>('/api/conductor', {
       method: 'PUT',
       body: JSON.stringify(body),

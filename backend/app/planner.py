@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from . import engine, store
+from . import appcfg, engine, store
 from .bus import BUS
 from .llm import CloudLLM
 from .sim import route_scores
@@ -31,17 +31,21 @@ CAP_VOCAB = [
 RESERVED_CAPS = {"planning", "decide"}
 CAP_VOCAB_FOR_MODEL = [c for c in CAP_VOCAB if c not in RESERVED_CAPS]
 
-SYSTEM = """你是 AgentMesh 的主脑（Conductor），负责把用户目标拆成可执行的任务 DAG。
+SYSTEM_TMPL = """你是 AgentMesh 的主脑（Conductor），负责把用户目标拆成可执行的任务 DAG。
 
 铁律：
 1. 你只做规划，不执行任何任务。
 2. 只输出 JSON，不要解释文字，不要 markdown 代码块。
 3. 每个节点必须是可验收的**动作**，不是"负责XX模块"这种空话。
-4. 节点数 5~12 个。能用 5 个解决就不要拆 12 个。
+4. {rule4}
 5. 有依赖的写进 deps；无依赖的留空数组，让它们能并行。
 6. required_caps 只能从给定词表里选，每节点 1~2 个。
 7. assigned 只能从给定成员 id 里选；如果没人合适，填 null 并在 why 里说明。
 8. acceptance 至少 1 条，要能被外部检查（"给出 3 条建议"可以，"做得好"不行）。"""
+
+# medium 粒度拼出来与改造前的 SYSTEM 逐字一致，保证"没动过设置"时行为完全不变。
+SYSTEM = SYSTEM_TMPL.format(
+    rule4="节点数 5~12 个。能用 5 个解决就不要拆 12 个。")
 
 SCHEMA_HINT = """输出 JSON 结构：
 {
@@ -110,8 +114,21 @@ async def draft(goal: str) -> dict:
 
 {SCHEMA_HINT}"""
 
+    # 拆解风格：粒度只改第 4 条铁律；额外要求编号续进铁律列表。
+    # 早先把它当成一段"额外要求"追加在 system 末尾，模型会当软提示忽略（实测 0/13 节点遵守）；
+    # 改成第 9 条、并点名"涉及验收的要写进 acceptance"后遵从度明显不同。
+    gkey, gdef = appcfg.granularity()
+    system = SYSTEM_TMPL.format(rule4=gdef["rule"])
+    extra = appcfg.extra_prompt()
+    if extra:
+        system += ("\n9. 额外规则（与上面 8 条同等约束力，必须逐条落实；"
+                   f"涉及验收标准的要直接写进对应节点的 acceptance）：\n{extra}")
+
     llm = CloudLLM()
-    res = await llm.chat_json(SYSTEM, user, max_tokens=2600, temperature=0.2)
+    # 输出预算得跟着粒度走：细粒度 + 额外规则会把 2600 撑爆，
+    # 被截断的 JSON 解析失败（实测踩过两次：4200 仍不够 13 节点 + 每条回滚方案）。
+    out_budget = {"coarse": 2000, "medium": 2600, "fine": 6000}.get(gkey, 2600)
+    res = await llm.chat_json(system, user, max_tokens=out_budget, temperature=0.2)
     plan = _normalize(res["data"], agents)
     plan["goal"] = goal
     plan["cost"] = {
@@ -120,6 +137,8 @@ async def draft(goal: str) -> dict:
         "completion_tokens": (res["usage"] or {}).get("completion_tokens"),
         "budget": res["budget"],
     }
+    # 记下这次用的风格，方便前后对比（也便于判断效果变化是不是它引起的）
+    plan["tuning"] = {"granularity": gkey, "extra_prompt": extra}
     store.save_plan(plan)
     return plan
 

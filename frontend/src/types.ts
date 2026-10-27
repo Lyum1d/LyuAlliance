@@ -180,4 +180,11 @@ export interface ConductorCfg {
   key_source: 'db' | 'env' | 'none'
   encryption: 'dpapi' | 'plain'
   budget_tokens: number
+  /** 拆解粒度 */
+  granularity: 'coarse' | 'medium' | 'fine'
+  granularity_label: string
+  granularity_hint: string
+  granularity_source: 'db' | '默认'
+  /** 追加到主脑提示词末尾的自定义要求 */
+  extra_prompt: string
 }

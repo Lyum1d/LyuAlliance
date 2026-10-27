@@ -2,12 +2,15 @@ node_modules/
 .venv/
 venv/
 # 数据库不入库：含本地任务数据，且 sqlite 二进制不适合进 git
+# 数据库与本地备份一律不入库
 **/data/*.db
 **/data/*.db-shm
 **/data/*.db-wal
+**/data/*.bak*
 *.db
 *.db-shm
 *.db-wal
+*.bak-*
 .env
 .env.*
 !.env.example

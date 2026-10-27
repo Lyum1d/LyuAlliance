@@ -158,4 +158,10 @@ def _parse_json(text: str) -> dict:
             return json.loads(brace.group(0))
         except json.JSONDecodeError:
             pass
-    raise RuntimeError(f"模型返回的不是合法 JSON：{text[:200]}")
+    truncated = not text.rstrip().endswith("}")
+    raise RuntimeError(
+        "模型返回的不是合法 JSON"
+        + ("（输出疑似被 max_tokens 截断，把拆解粒度调粗一点，或减少额外要求）"
+           if truncated else "（格式不符）")
+        + f"：{text[:200]}"
+    )
