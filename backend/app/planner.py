@@ -143,6 +143,39 @@ async def draft(goal: str) -> dict:
     return plan
 
 
+def revalidate(plan: dict) -> dict:
+    """草案被手工改过之后，重算一遍派生字段。
+
+    `_normalize` 只在模型返回时跑一次；用户在界面上改标题/依赖/新增节点之后，
+    依赖可能指向已删除的 key、也可能改出环，候选与「真实/模拟」标记也会过期。
+    这条路径必须和 `_normalize` 用同一套规则，否则两处逻辑会慢慢漂移。
+    """
+    tasks = plan.get("tasks") or []
+    key_set = {t["key"] for t in tasks}
+
+    # 依赖只保留存在的 key，去重、不能自引
+    for t in tasks:
+        t["deps"] = [d for d in dict.fromkeys(t.get("deps") or [])
+                     if d in key_set and d != t["key"]]
+
+    # 环检测：手工连出来的环同样要断
+    broken = _break_cycles({t["key"]: t for t in tasks})
+    if broken:
+        risks = plan.setdefault("risks", [])
+        if isinstance(risks, list):
+            risks.append(f"手工调整后出现循环依赖，已自动断开：{', '.join(broken)}")
+
+    # 重算路由候选与派生标记（注意：不自动指派，尊重用户留空的选择）
+    by_id = {a["id"]: a for a in assignable_agents()}
+    for t in tasks:
+        t["candidates"] = route_scores(
+            {"required_caps": t.get("required_caps") or []}, store.agents())[:3]
+        a = by_id.get(t.get("assigned"))
+        t["assigned_name"] = a["name"] if a else None
+        t["real"] = bool(a and a["real"])
+    return plan
+
+
 def _normalize(raw: dict, agents: list[dict]) -> dict:
     """把模型输出裁剪成可信结构：剔除非法节点、修 dep、补路由理由。"""
     if not isinstance(raw, dict):

@@ -108,29 +108,90 @@ async def plan_reject(body: dict | None = None) -> dict:
 
 @app.patch("/api/plan/task/{key}")
 async def plan_patch(key: str, body: dict) -> dict:
-    """改单个草案节点：换执行者 / 删节点。批准前就能改，不用重生成。"""
+    """改草案节点：增、删、改都走这里，改完立刻重算依赖 / 环 / 候选。
+
+    - `{"add": {title, objective, stage, required_caps, acceptance}}` 新增节点（key 自动分配）
+    - `{"remove": true}` 删除节点，同时把它从别人的 deps 里摘掉
+    - 其余按白名单逐项更新：title / objective / stage / required_caps / acceptance / deps / assigned / why
+
+    只认 draft 状态的草案——已经批准开工的图不能再改，那是另一回事。
+    """
     p = store.plan()
     if not p or p.get("status") != "draft":
         raise HTTPException(409, "没有待批准的草案")
-    tasks = p.get("tasks") or []
-    node = next((t for t in tasks if t["key"] == key), None)
-    if not node:
-        raise HTTPException(404, "节点不存在")
-
     body = body or {}
-    if body.get("remove"):
-        tasks = [t for t in tasks if t["key"] != key]
-        for t in tasks:
-            t["deps"] = [d for d in t["deps"] if d != key]
-        p["tasks"] = tasks
-    elif "assigned" in body:
-        aid = body.get("assigned")
-        allowed = {a["id"] for a in planner.assignable_agents()}
-        node["assigned"] = aid if aid in allowed else None
-        node["assigned_name"] = next(
-            (a["name"] for a in planner.assignable_agents() if a["id"] == aid), None)
-        node["real"] = any(a["id"] == aid and a["real"] for a in planner.assignable_agents())
+    tasks = p.get("tasks") or []
 
+    if body.get("add"):
+        if len(tasks) >= planner.MAX_NODES:
+            raise HTTPException(409, f"节点数已达上限 {planner.MAX_NODES} 个")
+        spec = body.get("add") or {}
+        title = str(spec.get("title") or "").strip()[:24]
+        if not title:
+            raise HTTPException(400, "新节点需要标题")
+        used = {t["key"] for t in tasks}
+        i = 1
+        while f"n{i}" in used:
+            i += 1
+        try:
+            stage = int(spec.get("stage") or 3)
+        except (TypeError, ValueError):
+            stage = 3
+        caps = [c for c in (spec.get("required_caps") or []) if c in planner.CAP_VOCAB_FOR_MODEL][:2]
+        acc = [str(a).strip() for a in (spec.get("acceptance") or []) if str(a).strip()][:4]
+        tasks.append({
+            "key": f"n{i}",
+            "title": title,
+            "objective": str(spec.get("objective") or "").strip()[:200],
+            "stage": min(5, max(1, stage)),
+            "required_caps": caps or ["general"],
+            "acceptance": acc or ["产出可被检查的交付物"],
+            "deps": [],
+            "assigned": None,
+            "why": "手工新增",
+        })
+    else:
+        node = next((t for t in tasks if t["key"] == key), None)
+        if not node:
+            raise HTTPException(404, "节点不存在")
+
+        if body.get("remove"):
+            tasks = [t for t in tasks if t["key"] != key]
+            for t in tasks:
+                t["deps"] = [d for d in (t.get("deps") or []) if d != key]
+        else:
+            if "title" in body:
+                v = str(body.get("title") or "").strip()[:24]
+                if not v:
+                    raise HTTPException(400, "标题不能为空")
+                node["title"] = v
+            if "objective" in body:
+                node["objective"] = str(body.get("objective") or "").strip()[:200]
+            if "why" in body:
+                node["why"] = str(body.get("why") or "").strip()[:120]
+            if "stage" in body:
+                try:
+                    node["stage"] = min(5, max(1, int(body.get("stage") or 3)))
+                except (TypeError, ValueError):
+                    raise HTTPException(400, "阶段填 1~5 的整数")
+            if "required_caps" in body:
+                caps = [c for c in (body.get("required_caps") or [])
+                        if c in planner.CAP_VOCAB_FOR_MODEL][:2]
+                node["required_caps"] = caps or ["general"]
+            if "acceptance" in body:
+                acc = [str(a).strip() for a in (body.get("acceptance") or [])
+                       if str(a).strip()][:4]
+                node["acceptance"] = acc or ["产出可被检查的交付物"]
+            if "deps" in body:
+                # 先原样收下，合法性交给 revalidate 统一裁剪（含环检测）
+                node["deps"] = [str(d) for d in (body.get("deps") or [])]
+            if "assigned" in body:
+                aid = body.get("assigned")
+                allowed = {a["id"] for a in planner.assignable_agents()}
+                node["assigned"] = aid if aid in allowed else None
+
+    p["tasks"] = tasks
+    planner.revalidate(p)
     store.save_plan(p)
     return {"ok": True, "plan": store.plan()}
 

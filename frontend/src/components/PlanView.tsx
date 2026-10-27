@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import type { Plan, PlanResp } from '../types'
+import PlanNodeEditor from './PlanNodeEditor'
 import { STAGES } from '../types'
 
 interface Props {
@@ -14,6 +15,8 @@ export default function PlanView({ onNotify, onChanged }: Props) {
   const [busy, setBusy] = useState<'' | 'draft' | 'approve' | 'reject'>('')
   const [note, setNote] = useState('')
   const [err, setErr] = useState<string | null>(null)
+  const [editingKey, setEditingKey] = useState<string | null>(null)
+  const [adding, setAdding] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -78,13 +81,10 @@ export default function PlanView({ onNotify, onChanged }: Props) {
     }
   }
 
-  const patch = async (key: string, body: { assigned?: string | null; remove?: boolean }) => {
-    try {
-      const r = await api.planPatch(key, body)
-      setData(d => (d ? { ...d, plan: r.plan } : d))
-    } catch (e: any) {
-      onNotify((e?.message ?? '修改失败').replace(/^\d+\s*/, ''), true)
-    }
+  // 抛错而不是内部吞掉：节点编辑器要靠它判断保存是否成功，失败时保留用户输入
+  const patch = async (key: string, body: Record<string, unknown>) => {
+    const r = await api.planPatch(key, body)
+    setData(d => (d ? { ...d, plan: r.plan } : d))
   }
 
   const budget = data?.budget
@@ -160,62 +160,117 @@ export default function PlanView({ onNotify, onChanged }: Props) {
                     </div>
                     {nodes.map(n => (
                       <div key={n.key} className="pnode">
-                        <div className="pn-main">
-                          <div className="pn-title">
-                            <code>{n.key}</code>
-                            {n.title}
-                            {n.real ? (
-                              <span className="pn-badge real">真实执行</span>
-                            ) : n.assigned ? (
-                              <span className="pn-badge sim">模拟</span>
-                            ) : (
-                              <span className="pn-badge none">未指派</span>
-                            )}
-                          </div>
-                          {n.objective && <div className="pn-obj">{n.objective}</div>}
-                          <div className="pn-meta">
-                            {n.required_caps.map(c => (
-                              <span key={c} className="cap">
-                                {c}
-                              </span>
-                            ))}
-                            {n.deps.length > 0 && (
-                              <span className="pn-deps">依赖 {n.deps.join(', ')}</span>
-                            )}
-                            {n.acceptance[0] && (
-                              <span className="pn-acc">验收：{n.acceptance[0]}</span>
-                            )}
-                          </div>
-                        </div>
+                        {editingKey === n.key ? (
+                          <PlanNodeEditor
+                            node={n}
+                            allKeys={plan.tasks.map(t => t.key)}
+                            onSave={async body => {
+                              await patch(n.key, body)
+                              setEditingKey(null)
+                              onNotify(`${n.key} 已更新`)
+                            }}
+                            onCancel={() => setEditingKey(null)}
+                          />
+                        ) : (
+                          <>
+                            <div className="pn-main">
+                              <div className="pn-title">
+                                <code>{n.key}</code>
+                                {n.title}
+                                {n.real ? (
+                                  <span className="pn-badge real">真实执行</span>
+                                ) : n.assigned ? (
+                                  <span className="pn-badge sim">模拟</span>
+                                ) : (
+                                  <span className="pn-badge none">未指派</span>
+                                )}
+                              </div>
+                              {n.objective && <div className="pn-obj">{n.objective}</div>}
+                              <div className="pn-meta">
+                                {n.required_caps.map(c => (
+                                  <span key={c} className="cap">
+                                    {c}
+                                  </span>
+                                ))}
+                                {n.deps.length > 0 && (
+                                  <span className="pn-deps">依赖 {n.deps.join(', ')}</span>
+                                )}
+                                {n.acceptance[0] && (
+                                  <span className="pn-acc">验收：{n.acceptance[0]}</span>
+                                )}
+                              </div>
+                            </div>
 
-                        <div className="pn-side">
-                          <select
-                            value={n.assigned ?? ''}
-                            onChange={e =>
-                              patch(n.key, { assigned: e.target.value || null })
-                            }
-                          >
-                            <option value="">未指派</option>
-                            {(data?.agents ?? []).map(a => (
-                              <option key={a.id} value={a.id}>
-                                {a.name}
-                                {a.real ? '' : '（模拟）'}
-                              </option>
-                            ))}
-                          </select>
-                          {n.why && <div className="pn-why">{n.why}</div>}
-                          <button
-                            className="btn danger sm"
-                            onClick={() => patch(n.key, { remove: true })}
-                          >
-                            删掉
-                          </button>
-                        </div>
+                            <div className="pn-side">
+                              <select
+                                value={n.assigned ?? ''}
+                                onChange={e =>
+                                  void patch(n.key, { assigned: e.target.value || null }).catch(
+                                    (x: any) =>
+                                      onNotify(
+                                        (x?.message ?? '换人失败').replace(/^\d+\s*/, ''),
+                                        true,
+                                      ),
+                                  )
+                                }
+                              >
+                                <option value="">未指派</option>
+                                {(data?.agents ?? []).map(a => (
+                                  <option key={a.id} value={a.id}>
+                                    {a.name}
+                                    {a.real ? '' : '（模拟）'}
+                                  </option>
+                                ))}
+                              </select>
+                              {n.why && <div className="pn-why">{n.why}</div>}
+                              <div className="pn-side-btns">
+                                <button className="btn sm" onClick={() => setEditingKey(n.key)}>
+                                  编辑
+                                </button>
+                                <button
+                                  className="btn danger sm"
+                                  onClick={() =>
+                                    void patch(n.key, { remove: true })
+                                      .then(() => {
+                                        setEditingKey(null)
+                                        onNotify(`${n.key} 已删除`)
+                                      })
+                                      .catch((x: any) =>
+                                        onNotify(
+                                          (x?.message ?? '删除失败').replace(/^\d+\s*/, ''),
+                                          true,
+                                        ),
+                                      )
+                                  }
+                                >
+                                  删掉
+                                </button>
+                              </div>
+                            </div>
+                          </>
+                        )}
                       </div>
                     ))}
                   </div>
                 )
               })}
+
+              {adding ? (
+                <PlanNodeEditor
+                  node={null}
+                  allKeys={plan.tasks.map(t => t.key)}
+                  onSave={async body => {
+                    await patch('new', body)
+                    setAdding(false)
+                    onNotify('已添加节点')
+                  }}
+                  onCancel={() => setAdding(false)}
+                />
+              ) : (
+                <button className="btn additive" onClick={() => setAdding(true)}>
+                  + 加一个节点
+                </button>
+              )}
             </div>
 
             <div className="plan-side">

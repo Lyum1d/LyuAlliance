@@ -47,7 +47,8 @@ export const api = {
   planApprove: () => j<{ ok: boolean; tasks: number }>('/api/plan/approve', { method: 'POST' }),
   planReject: (note: string) =>
     j('/api/plan/reject', { method: 'POST', body: JSON.stringify({ note }) }),
-  planPatch: (key: string, body: { assigned?: string | null; remove?: boolean }) =>
+  // 增删改都走这个：{add: {...}} 新增 / {remove: true} 删除 / 其余按字段更新
+  planPatch: (key: string, body: Record<string, unknown>) =>
     j<{ ok: boolean; plan: Plan }>(`/api/plan/task/${key}`, {
       method: 'PATCH',
       body: JSON.stringify(body),
