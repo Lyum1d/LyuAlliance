@@ -642,3 +642,32 @@ def config_del(key: str) -> None:
         c = conn()
         c.execute("DELETE FROM app_config WHERE key=?", (key,))
         c.commit()
+
+
+# ---------------------------------------------------------------- 单任务增量编辑
+
+def deps_of(task_id: str) -> list[str]:
+    """这个任务依赖谁（edge 的 from 是依赖方，to 是它自己）。"""
+    with _lock:
+        rows = conn().execute("SELECT from_id FROM edge WHERE to_id=?", (task_id,)).fetchall()
+    return [r[0] for r in rows]
+
+
+def set_deps_of(task_id: str, deps: list[str]) -> None:
+    with _lock:
+        c = conn()
+        c.execute("DELETE FROM edge WHERE to_id=?", (task_id,))
+        for d in deps:
+            c.execute("INSERT OR IGNORE INTO edge(from_id,to_id) VALUES(?,?)", (d, task_id))
+        c.commit()
+
+
+def drop_task(task_id: str) -> bool:
+    """删任务并清掉所有相关边与交接记录，返回是否真的删掉了。"""
+    with _lock:
+        c = conn()
+        cur = c.execute("DELETE FROM task WHERE id=?", (task_id,))
+        c.execute("DELETE FROM edge WHERE from_id=? OR to_id=?", (task_id, task_id))
+        c.execute("DELETE FROM handoff WHERE from_task=? OR to_task=?", (task_id, task_id))
+        c.commit()
+        return cur.rowcount > 0

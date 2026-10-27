@@ -1,4 +1,4 @@
-import type { Candidate, ConductorCfg, Plan, PlanResp, Snapshot } from './types'
+import type { Candidate, ConductorCfg, Plan, PlanResp, Snapshot, Task } from './types'
 
 async function j<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(url, {
@@ -53,6 +53,15 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
+
+  // 已开工图里的单个任务：按状态限定能改什么，后端会拒并说明原因
+  taskPatch: (tid: string, body: Record<string, unknown>) =>
+    j<{ ok: boolean; task: Task }>(`/api/tasks/${tid}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  taskRemove: (tid: string) =>
+    j<{ ok: boolean; freed: string[] }>(`/api/tasks/${tid}`, { method: 'DELETE' }),
 
   // 主脑（云端模型）配置：接口只回掩码，明文永不下发
   conductor: () => j<ConductorCfg>('/api/conductor'),

@@ -3,17 +3,30 @@ import { api } from '../api'
 import type { Agent, Candidate, Task } from '../types'
 import { STATUS_TEXT } from '../types'
 import { BADGE_CLASS, elapsedMs, fmtDuration } from '../lib'
+import TaskEditor from './TaskEditor'
 
 interface Props {
   task: Task | null
   agents: Agent[]
+  allTasks: Task[]
+  /** [from, to] —— to 依赖 from */
+  edges: [string, string][]
   onAction: (kind: 'dispatch' | 'force' | 'cancel' | 'approve', tid: string) => void
   onNotify?: (msg: string, err?: boolean) => void
   onChanged?: () => void
 }
 
-export default function Inspector({ task, agents, onAction, onNotify, onChanged }: Props) {
+export default function Inspector({
+  task,
+  agents,
+  allTasks,
+  edges,
+  onAction,
+  onNotify,
+  onChanged,
+}: Props) {
   const [cands, setCands] = useState<Candidate[]>([])
+  const [editing, setEditing] = useState(false)
   const outRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -30,6 +43,11 @@ export default function Inspector({ task, agents, onAction, onNotify, onChanged 
       alive = false
     }
   }, [task?.id, task?.status])
+
+  // 切到别的任务就退出编辑，免得把上一条的输入带过来
+  useEffect(() => {
+    setEditing(false)
+  }, [task?.id])
 
   // 流式输出时始终贴底
   useEffect(() => {
@@ -52,6 +70,40 @@ export default function Inspector({ task, agents, onAction, onNotify, onChanged 
   const top = cands[0]
   const streaming = task.status === 'running'
   const hasOut = !!task.output && task.output.length > 0
+
+  if (editing) {
+    const deps = edges.filter(([, to]) => to === task.id).map(([from]) => from)
+    return (
+      <div className="panel inspector">
+        <div className="insp-edit-head">
+          <div>
+            <b>编辑 {task.id}</b>
+            <span>{task.title}</span>
+          </div>
+          <button className="btn sm" onClick={() => setEditing(false)}>
+            关闭
+          </button>
+        </div>
+        <TaskEditor
+          task={task}
+          allTasks={allTasks}
+          agents={agents}
+          deps={deps}
+          onSave={async body => {
+            try {
+              await api.taskPatch(task.id, body)
+              setEditing(false)
+              onNotify?.('已保存修改')
+              onChanged?.()
+            } catch (e: any) {
+              throw e            // 交给编辑器显示错误，保住用户输入
+            }
+          }}
+          onCancel={() => setEditing(false)}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="panel inspector">
@@ -260,6 +312,11 @@ export default function Inspector({ task, agents, onAction, onNotify, onChanged 
       </div>
 
       <div className="actions">
+        {task.status !== 'done' && task.status !== 'failed' && (
+          <button className="btn" onClick={() => setEditing(true)}>
+            编辑
+          </button>
+        )}
         {task.status === 'running' && (
           <button className="btn danger" onClick={() => onAction('cancel', task.id)}>
             中止运行

@@ -360,3 +360,12 @@ def reject(note: str) -> dict:
 
 def budget() -> dict:
     return CloudLLM().budget()
+
+
+def cycle_in(deps_map: dict[str, list[str]]) -> list[str]:
+    """给定 {id: [它依赖的 id…]}，返回环上的点；无环返回空。
+
+    直接复用 `_find_cycle`，不在这里另写一套图论逻辑——
+    草案阶段和已开工阶段对"环"的定义必须一样。
+    """
+    return _find_cycle({k: {"deps": v} for k, v in deps_map.items()})

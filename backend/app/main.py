@@ -311,6 +311,120 @@ async def approve(tid: str) -> dict:
     return {"ok": True, "handoffs": len(made)}
 
 
+# 已开工的图：按任务状态限定哪些字段还能改。
+# 原则是「已经发出去的东西不该被假装改掉」——
+# running 的任务 prompt 已经交给执行体了，改标题/目标只是自欺；
+# 但验收标准在 reviewing 之前都该能调，因为它决定的是"算不算过"。
+TASK_EDITABLE: dict[str, set[str]] = {
+    "pending": {"title", "objective", "acceptance", "required_caps", "assignee", "deps", "priority"},
+    "blocked": {"title", "objective", "acceptance", "required_caps", "assignee", "deps", "priority"},
+    "running": {"acceptance"},
+    "reviewing": {"acceptance"},
+    "done": set(),
+    "failed": set(),
+    "cancelled": set(),
+}
+
+TASK_FIELD_CN = {
+    "title": "标题", "objective": "目标", "acceptance": "验收标准",
+    "required_caps": "能力", "assignee": "执行者", "deps": "依赖", "priority": "优先级",
+}
+
+
+@app.patch("/api/tasks/{tid}")
+async def task_edit(tid: str, body: dict) -> dict:
+    """改已开工图里的单个任务。
+
+    和草案编辑（`/api/plan/task/{key}`）是两回事：那个改的是尚未落地的草案 JSON，
+    这个改的是真实任务行，改完立刻影响调度。
+    """
+    t = store.task(tid)
+    if not t:
+        raise HTTPException(404, "任务不存在")
+    body = body or {}
+    status = t["status"]
+    allowed = TASK_EDITABLE.get(status, set())
+
+    touched = [k for k in body if k in TASK_FIELD_CN]
+    locked = [k for k in touched if k not in allowed]
+    if locked:
+        f = locked[0]
+        hint = ""
+        if status == "running":
+            hint = "。它已经在跑了，prompt 早就发出去，改这些只是自欺"
+        elif status in ("done", "failed"):
+            hint = "。要重做请先「重新打开」这个任务"
+        elif status == "reviewing":
+            hint = "。它正等你验收，改内容请先退回"
+        raise HTTPException(409, f"「{t['title']}」当前是 {status}，不能改{TASK_FIELD_CN[f]}{hint}")
+    if not touched:
+        raise HTTPException(400, "没有可改的字段")
+
+    fields: dict[str, object] = {}
+    if "title" in body:
+        v = str(body.get("title") or "").strip()[:40]
+        if not v:
+            raise HTTPException(400, "标题不能为空")
+        fields["title"] = v
+    if "objective" in body:
+        fields["objective"] = str(body.get("objective") or "").strip()[:400]
+    if "acceptance" in body:
+        acc = [str(a).strip() for a in (body.get("acceptance") or []) if str(a).strip()][:5]
+        fields["acceptance"] = json.dumps(acc or ["产出可被检查的交付物"], ensure_ascii=False)
+    if "required_caps" in body:
+        caps = [c for c in (body.get("required_caps") or [])
+                if c in planner.CAP_VOCAB_FOR_MODEL][:2]
+        fields["required_caps"] = json.dumps(caps or ["general"], ensure_ascii=False)
+    if "assignee" in body:
+        aid = body.get("assignee")
+        mate = {a["id"] for a in store.agents() if a["in_team"]}
+        fields["assignee"] = aid if aid in mate else None
+    if "priority" in body:
+        try:
+            fields["priority"] = max(0, min(9, int(body.get("priority") or 1)))
+        except (TypeError, ValueError):
+            raise HTTPException(400, "优先级要填 0~9 的整数")
+
+    if fields:
+        store.update_task(tid, **fields)
+
+    if "deps" in body:
+        raw_deps = body.get("deps") or []
+        if tid in raw_deps:
+            raise HTTPException(400, "任务不能依赖自己")
+        ids = {x["id"] for x in store.tasks() if x["id"] != tid}
+        deps = [d for d in dict.fromkeys(raw_deps) if d in ids]
+        graph = {x["id"]: store.deps_of(x["id"]) for x in store.tasks()}
+        graph[tid] = deps
+        cyc = planner.cycle_in(graph)
+        if cyc:
+            raise HTTPException(409, f"这样改会形成循环依赖：{' → '.join(cyc)}，已拒绝")
+        store.set_deps_of(tid, deps)
+
+    await BUS.publish("task.edited", "user", {
+        "task_id": tid,
+        "title": str(fields.get("title") or t["title"]),
+        "fields": sorted(set(fields) | ({"deps"} if "deps" in body else set())),
+    })
+    return {"ok": True, "task": store.task(tid)}
+
+
+@app.delete("/api/tasks/{tid}")
+async def task_remove(tid: str) -> dict:
+    """从图里删掉一个任务。只允许删还没开跑的，在跑的请先取消。"""
+    t = store.task(tid)
+    if not t:
+        raise HTTPException(404, "任务不存在")
+    if t["status"] in ("running", "reviewing") or engine.is_running(tid):
+        raise HTTPException(409, f"「{t['title']}」还在跑或待验收，先取消再删")
+    downstream = [x["id"] for x in store.tasks() if tid in store.deps_of(x["id"])]
+    store.drop_task(tid)
+    await BUS.publish("task.removed", "user", {
+        "task_id": tid, "title": t["title"], "downstream": downstream,
+    })
+    return {"ok": True, "freed": downstream}
+
+
 @app.get("/api/tasks/{tid}/handoffs")
 def task_handoffs(tid: str) -> dict:
     return {"handoffs": store.handoffs_for(to_task=tid)}

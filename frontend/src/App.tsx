@@ -231,6 +231,8 @@ export default function App() {
             <Inspector
               task={selectedTask}
               agents={snap.agents}
+              allTasks={snap.tasks}
+              edges={snap.edges}
               onAction={act}
               onNotify={notify}
               onChanged={reload}
