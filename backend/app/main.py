@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import appcfg, bridge_watch, engine, handoff, planner, sim, store
+from . import appcfg, billing, bridge_watch, engine, handoff, planner, sim, store
 from .probe import probe, probe_and_store
 from .bus import BUS
 from .sim import route_scores
@@ -28,10 +28,11 @@ async def lifespan(app: FastAPI):
         print(f"[startup] 回收上次中断的任务 {len(reclaimed)} 个: {reclaimed}")
     sim_task = asyncio.create_task(sim.run())
     watch_task = asyncio.create_task(bridge_watch.run())
+    billing_task = asyncio.create_task(billing.watch())
     try:
         yield
     finally:
-        for t in (sim_task, watch_task):
+        for t in (sim_task, watch_task, billing_task):
             t.cancel()
             try:
                 await t
@@ -76,6 +77,8 @@ async def plan_draft(body: dict) -> dict:
         p = await planner.draft(goal)
     except ValueError as e:
         raise HTTPException(400, str(e))
+    except billing.InsufficientBalance as e:
+        raise HTTPException(402, str(e))          # 402 Payment Required，语义刚好
     except Exception as e:
         raise HTTPException(502, f"{type(e).__name__}: {e}"[:400])
     await BUS.publish("plan.drafted", "conductor", {
@@ -460,6 +463,15 @@ async def reset_budget() -> dict:
     store.clear_llm_usage()
     await BUS.publish("budget.reset", "user", {})
     return {"ok": True, "budget": planner.budget()}
+
+
+@app.get("/api/billing")
+async def billing_status(force: bool = False) -> dict:
+    """账户体检：真实余额（供应商支持时）+ 本地 token 账本，给出 ok/warn/critical。
+
+    `force=true` 跳过 60 秒缓存，点「刷新余额」时用。
+    """
+    return billing.status(force=force)
 
 
 @app.get("/api/conductor")

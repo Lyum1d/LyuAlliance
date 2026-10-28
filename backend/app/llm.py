@@ -13,7 +13,7 @@ from typing import Any
 
 import httpx
 
-from . import appcfg, store
+from . import appcfg, billing, store
 from .config import env_bool
 
 
@@ -122,6 +122,13 @@ class CloudLLM:
                 json=payload,
             )
         if r.status_code != 200:
+            body_low = r.text.lower()
+            # 余额/额度类错误单独抛，让上层能回 402 并给出"该充钱了"的明确提示，
+            # 而不是混在一个 502 里让人以为是自己写错了。
+            if r.status_code == 402 or "insufficient" in body_low or "quota" in body_low \
+                    or "balance" in body_low:
+                billing._CACHE.update(at=0.0)      # 缓存作废，下次一定重查
+                raise billing.InsufficientBalance(f"云端因余额不足拒绝（{r.status_code}）：{r.text[:200]}")
             raise RuntimeError(f"云端 {r.status_code}: {r.text[:300]}")
 
         body = r.json()

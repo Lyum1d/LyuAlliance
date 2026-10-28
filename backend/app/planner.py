@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from . import appcfg, engine, store
+from . import appcfg, billing, engine, store
 from .bus import BUS
 from .llm import CloudLLM
 from .sim import route_scores
@@ -124,6 +124,10 @@ async def draft(goal: str) -> dict:
         system += ("\n9. 额外规则（与上面 8 条同等约束力，必须逐条落实；"
                    f"涉及验收标准的要直接写进对应节点的 acceptance）：\n{extra}")
 
+    # 先看钱包。到止损线就抛 InsufficientBalance，别发起一次注定失败的调用——
+    # 用户宁可提前被拦下，也不想等到报错才发现余额见底。
+    wallet = billing.guard()
+
     llm = CloudLLM()
     # 输出预算得跟着粒度走：细粒度 + 额外规则会把 2600 撑爆，
     # 被截断的 JSON 解析失败（实测踩过两次：4200 仍不够 13 节点 + 每条回滚方案）。
@@ -139,6 +143,8 @@ async def draft(goal: str) -> dict:
     }
     # 记下这次用的风格，方便前后对比（也便于判断效果变化是不是它引起的）
     plan["tuning"] = {"granularity": gkey, "extra_prompt": extra}
+    plan["wallet"] = {"level": wallet["level"], "balance": wallet["balance"],
+                      "message": wallet["message"]}
     store.save_plan(plan)
     return plan
 

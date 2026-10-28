@@ -546,3 +546,19 @@ td-title { display: block; }
   font-size: 11.5px; line-height: 1.6; color: #92400e;
   background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 8px 10px;
 }
+
+/* ---------- 顶栏余额徽标 ---------- */
+.bill {
+  font-size: 12px; font-variant-numeric: tabular-nums;
+  padding: 3px 10px; border-radius: 20px; cursor: pointer;
+  border: 1px solid var(--border); background: #fff; color: var(--muted);
+  white-space: nowrap;
+}
+.bill.ok { color: #15803d; border-color: #bbf7d0; background: var(--green-soft); }
+.bill.warn { color: #b45309; border-color: #fde68a; background: #fffbeb; }
+.bill.critical {
+  color: var(--red); border-color: #fecaca; background: var(--red-soft);
+  animation: billpulse 2s ease-in-out infinite;
+}
+.bill.unknown { color: var(--faint); }
+@keyframes billpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }

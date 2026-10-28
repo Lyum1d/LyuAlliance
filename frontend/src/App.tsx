@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from './api'
 import { useAgentMesh } from './store'
+import type { BillingStatus } from './types'
 import AgentStrip from './components/AgentStrip'
 import Swimlane from './components/Swimlane'
 import Dag from './components/Dag'
@@ -33,6 +34,36 @@ export default function App() {
     setToast({ msg, err })
     window.setTimeout(() => setToast(null), 3200)
   }, [])
+
+  // 账户体检：60 秒一轮。余额不会秒变，这个频率够用；
+  // 只有等级"变坏"时才弹提示，否则每轮都弹会烦死人。
+  const [bill, setBill] = useState<BillingStatus | null>(null)
+  const billLevel = useRef('')
+
+  useEffect(() => {
+    let alive = true
+    const tick = async () => {
+      try {
+        const b = await api.billing()
+        if (!alive) return
+        setBill(b)
+        if (b.level !== billLevel.current) {
+          const becameWorse =
+            b.level === 'critical' || (b.level === 'warn' && billLevel.current !== 'critical')
+          billLevel.current = b.level
+          if (becameWorse) notify(b.message, b.level === 'critical')
+        }
+      } catch {
+        /* 查不到余额不该影响主流程 */
+      }
+    }
+    void tick()
+    const id = window.setInterval(tick, 60_000)
+    return () => {
+      alive = false
+      window.clearInterval(id)
+    }
+  }, [notify])
 
   useEffect(() => {
     if (sel || !snap) return
@@ -127,6 +158,17 @@ export default function App() {
             {connected ? `${running.length} 个 Agent 工作中` : '后端未连接'}
           </span>
           <span className="timer">{snap.workspace.name}</span>
+          {bill && (
+            <span
+              className={'bill ' + bill.level}
+              title={bill.message}
+              onClick={() => setCfgOpen(true)}
+            >
+              {bill.balance_known && bill.balance !== null
+                ? `¥${bill.balance.toFixed(2)}`
+                : '余额未知'}
+            </span>
+          )}
           <label
             className={'switch' + (snap.workspace.auto_accept ? ' on' : '')}
             title="开启后，每个节点跑完自动通过验收，不再逐个等你点（默认关）"

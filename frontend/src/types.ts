@@ -188,3 +188,23 @@ export interface ConductorCfg {
   /** 追加到主脑提示词末尾的自定义要求 */
   extra_prompt: string
 }
+
+/** 云端账户体检（真实余额 + 本地 token 账本） */
+export interface BillingStatus {
+  level: 'ok' | 'warn' | 'critical' | 'unknown'
+  message: string
+  balance: number | null
+  currency: string | null
+  available: boolean | null
+  balance_known: boolean
+  warn_below: number
+  stop_below: number
+  /** 按最近消耗估算还能拆几次 */
+  est_runs: number | null
+  per_run_cost: number
+  budget_used: number
+  budget_limit: number
+  budget_pct: number
+  model: string
+  checked_at: string
+}
