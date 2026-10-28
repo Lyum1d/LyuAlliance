@@ -196,6 +196,7 @@ async def watch(interval: float = 300.0) -> None:
     while True:
         try:
             s = status(force=True)
+            # 等级变化 → 发事件（时间线上能看到余额什么时候开始告警）
             if last_level is not None and s["level"] != last_level:
                 await BUS.publish("billing.changed", "scheduler", {
                     "level": s["level"],
@@ -203,23 +204,28 @@ async def watch(interval: float = 300.0) -> None:
                     "message": s["message"],
                     "balance": s["balance"],
                 })
-                # 只有变坏到 critical 才发信；恢复时不发，免得又打扰一次
-                if (s["level"] == "critical"
-                        and appcfg.mail_enabled() and appcfg.mail_to()):
-                    now = time.time()
-                    if now - last_mail_at > MAIL_COOLDOWN:
-                        try:
-                            notify.send(
-                                f"【AgentMesh】云端余额告警：{s['message'][:40]}",
-                                _mail_body(s),
-                            )
-                            last_mail_at = now
-                            await BUS.publish("billing.mailed", "scheduler",
-                                              {"to": appcfg.mail_to()})
-                        except Exception as e:
-                            # 发不出去要留痕，不能静默——否则"以为通知了其实没发"
-                            await BUS.publish("billing.mail_failed", "scheduler",
-                                              {"error": f"{type(e).__name__}: {e}"[:200]})
+
+            # 发信判断独立于"变化"：后端启动时如果已经是 critical，last_level 还是 None，
+            # 写在"变化"分支里就永远不会发，用户等不到通知。
+            # 用 last_level 自身去重：持续 critical 只在第一次发，冷却期内也不重复。
+            if (s["level"] == "critical"
+                    and last_level != "critical"
+                    and appcfg.mail_enabled() and appcfg.mail_to()):
+                now = time.time()
+                if now - last_mail_at > MAIL_COOLDOWN:
+                    try:
+                        notify.send(
+                            f"【AgentMesh】云端余额告警：{s['message'][:40]}",
+                            _mail_body(s),
+                        )
+                        last_mail_at = now
+                        await BUS.publish("billing.mailed", "scheduler",
+                                          {"to": appcfg.mail_to()})
+                    except Exception as e:
+                        # 发不出去要留痕，不能静默——否则"以为通知了其实没发"
+                        await BUS.publish("billing.mail_failed", "scheduler",
+                                          {"error": f"{type(e).__name__}: {e}"[:200]})
+
             last_level = s["level"]
         except Exception:
             pass
