@@ -164,11 +164,34 @@ def guard() -> dict:
     return s
 
 
+MAIL_COOLDOWN = 6 * 3600          # 同一等级 6 小时内只发一封，避免刷屏
+
+
+def _mail_body(s: dict) -> str:
+    lines = [
+        "AgentMesh 余额告警",
+        "",
+        f"当前余额：{'¥%.2f' % s['balance'] if s['balance'] is not None else '未知'} {s['currency'] or ''}",
+        f"提醒线：¥{s['warn_below']:.2f}    止损线：¥{s['stop_below']:.2f}",
+        f"状态：{s['message']}",
+        f"模型：{s['model']}",
+        f"本地 token 账本：{s['budget_used']} / {s['budget_limit']}（{s['budget_pct']}%）",
+    ]
+    if s["est_runs"] is not None:
+        lines.append(f"按最近消耗估算，当前余额约可拆解 {s['est_runs']} 次")
+    if s["level"] == "critical":
+        lines += ["", "已停止发起新的主脑拆解。充值后刷新界面即可恢复。"]
+    lines += ["", f"检查时间：{s['checked_at']}", "—— AgentMesh 自动提醒"]
+    return "\n".join(lines)
+
+
 async def watch(interval: float = 300.0) -> None:
-    """后台巡检：等级变化时发事件，界面上能看到余额什么时候开始告警。"""
+    """后台巡检：等级变化时发事件；跌到 critical 时发一封邮件。"""
     from .bus import BUS
+    from . import notify
 
     last_level = None
+    last_mail_at = 0.0
     await _sleep(3.0)
     while True:
         try:
@@ -180,6 +203,23 @@ async def watch(interval: float = 300.0) -> None:
                     "message": s["message"],
                     "balance": s["balance"],
                 })
+                # 只有变坏到 critical 才发信；恢复时不发，免得又打扰一次
+                if (s["level"] == "critical"
+                        and appcfg.mail_enabled() and appcfg.mail_to()):
+                    now = time.time()
+                    if now - last_mail_at > MAIL_COOLDOWN:
+                        try:
+                            notify.send(
+                                f"【AgentMesh】云端余额告警：{s['message'][:40]}",
+                                _mail_body(s),
+                            )
+                            last_mail_at = now
+                            await BUS.publish("billing.mailed", "scheduler",
+                                              {"to": appcfg.mail_to()})
+                        except Exception as e:
+                            # 发不出去要留痕，不能静默——否则"以为通知了其实没发"
+                            await BUS.publish("billing.mail_failed", "scheduler",
+                                              {"error": f"{type(e).__name__}: {e}"[:200]})
             last_level = s["level"]
         except Exception:
             pass

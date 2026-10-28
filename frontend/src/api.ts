@@ -1,4 +1,13 @@
-import type { BillingStatus, Candidate, ConductorCfg, Plan, PlanResp, Snapshot, Task } from './types'
+import type {
+  BillingStatus,
+  Candidate,
+  ConductorCfg,
+  NotifyStatus,
+  Plan,
+  PlanResp,
+  Snapshot,
+  Task,
+} from './types'
 
 async function j<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(url, {
@@ -66,6 +75,14 @@ export const api = {
   // 账户体检：真实余额 + token 账本
   billing: (force = false) => j<BillingStatus>(`/api/billing?force=${force ? 'true' : 'false'}`),
 
+  // 余额告警邮件
+  notify: () => j<NotifyStatus>('/api/notify'),
+  testNotify: (to: string) =>
+    j<{ ok: boolean; to: string; detail: string }>('/api/notify/test', {
+      method: 'POST',
+      body: JSON.stringify({ to }),
+    }),
+
   // 主脑（云端模型）配置：接口只回掩码，明文永不下发
   conductor: () => j<ConductorCfg>('/api/conductor'),
   saveConductor: (body: {
@@ -74,6 +91,8 @@ export const api = {
     api_key?: string
     granularity?: string
     extra_prompt?: string
+    notify_enabled?: boolean
+    notify_email?: string
   }) =>
     j<{ ok: boolean } & ConductorCfg>('/api/conductor', {
       method: 'PUT',

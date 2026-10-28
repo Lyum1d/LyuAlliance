@@ -187,6 +187,19 @@ export interface ConductorCfg {
   granularity_source: 'db' | '默认'
   /** 追加到主脑提示词末尾的自定义要求 */
   extra_prompt: string
+  /** 余额告警收件人 */
+  notify_email: string
+  /** 余额告警邮件开关（默认关） */
+  notify_enabled: boolean
+}
+
+/** 邮件通道状态 */
+export interface NotifyStatus {
+  enabled: boolean
+  to: string
+  /** agent-mail 自己的地址，显示"从哪发出" */
+  from: string | null
+  available: boolean
 }
 
 /** 云端账户体检（真实余额 + 本地 token 账本） */

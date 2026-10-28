@@ -17,6 +17,8 @@ K_MODEL = "conductor.model"
 K_KEY = "conductor.api_key"
 K_GRAN = "conductor.granularity"
 K_EXTRA = "conductor.extra_prompt"
+K_MAIL_TO = "notify.email_to"
+K_MAIL_ON = "notify.email_enabled"
 
 DEFAULT_BASE = "https://api.deepseek.com"
 DEFAULT_MODEL = "deepseek-flash"
@@ -55,6 +57,16 @@ def granularity() -> tuple[str, dict]:
 
 def extra_prompt() -> str:
     return _db(K_EXTRA)[:EXTRA_LIMIT]
+
+
+def mail_to() -> str:
+    """余额告警的收件人。空表示没配。"""
+    return _db(K_MAIL_TO).strip()[:120]
+
+
+def mail_enabled() -> bool:
+    """默认关：发邮件是外部动作，必须用户明确打开。"""
+    return _db(K_MAIL_ON) == "1"
 
 
 def _db(key: str) -> str:
@@ -108,6 +120,8 @@ def public() -> dict:
         "granularity_hint": gdef["hint"],
         "extra_prompt": c["extra_prompt"],
         "granularity_source": "db" if _db(K_GRAN) else "默认",
+        "notify_email": mail_to(),
+        "notify_enabled": mail_enabled(),
     }
 
 
@@ -136,6 +150,17 @@ def update(body: dict) -> dict:
             store.config_set(K_GRAN, v)
         else:
             store.config_del(K_GRAN)      # 空值或非法值都视为「回默认」
+    if "notify_email" in body:
+        v = str(body.get("notify_email") or "").strip()[:120]
+        if v:
+            store.config_set(K_MAIL_TO, v)
+        else:
+            store.config_del(K_MAIL_TO)
+    if "notify_enabled" in body:
+        if body.get("notify_enabled"):
+            store.config_set(K_MAIL_ON, "1")
+        else:
+            store.config_del(K_MAIL_ON)
     if "extra_prompt" in body:
         v = str(body.get("extra_prompt") or "").strip()[:EXTRA_LIMIT]
         if v:

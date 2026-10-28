@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
-import type { ConductorCfg } from '../types'
+import type { ConductorCfg, NotifyStatus } from '../types'
 
 type Props = {
   onClose: () => void
@@ -21,6 +21,10 @@ export default function ConductorPanel({ onClose, onNotify }: Props) {
   const [key, setKey] = useState('')
   const [gran, setGran] = useState<'coarse' | 'medium' | 'fine'>('medium')
   const [extra, setExtra] = useState('')
+  const [mailOn, setMailOn] = useState(false)
+  const [mailTo, setMailTo] = useState('')
+  const [mailInfo, setMailInfo] = useState<NotifyStatus | null>(null)
+  const [testBusy, setTestBusy] = useState(false)
   const [busy, setBusy] = useState<'' | 'save' | 'test' | 'clear' | 'reset'>('')
   const [msg, setMsg] = useState<{ text: string; bad: boolean } | null>(null)
 
@@ -33,6 +37,12 @@ export default function ConductorPanel({ onClose, onNotify }: Props) {
       setKey('')
       setGran(c.granularity)
       setExtra(c.extra_prompt)
+      setMailOn(c.notify_enabled)
+      setMailTo(c.notify_email)
+      void api
+        .notify()
+        .then(setMailInfo)
+        .catch(() => setMailInfo(null))
     } catch (e: any) {
       setMsg({ text: e?.message ?? '读取配置失败', bad: true })
     }
@@ -43,7 +53,12 @@ export default function ConductorPanel({ onClose, onNotify }: Props) {
   }, [])
 
   const connDirty = !!cfg && (base !== cfg.base_url || model !== cfg.model || key.trim() !== '')
-  const styleDirty = !!cfg && (gran !== cfg.granularity || extra !== cfg.extra_prompt)
+  const styleDirty =
+    !!cfg &&
+    (gran !== cfg.granularity ||
+      extra !== cfg.extra_prompt ||
+      mailOn !== cfg.notify_enabled ||
+      mailTo.trim() !== cfg.notify_email)
   const dirty = connDirty || styleDirty
 
   const save = async () => {
@@ -54,12 +69,16 @@ export default function ConductorPanel({ onClose, onNotify }: Props) {
       api_key?: string
       granularity?: string
       extra_prompt?: string
+      notify_enabled?: boolean
+      notify_email?: string
     } = {}
     if (base !== cfg.base_url) body.base_url = base
     if (model !== cfg.model) body.model = model
     if (key.trim()) body.api_key = key.trim()
     if (gran !== cfg.granularity) body.granularity = gran
     if (extra !== cfg.extra_prompt) body.extra_prompt = extra
+    if (mailOn !== cfg.notify_enabled) body.notify_enabled = mailOn
+    if (mailTo.trim() !== cfg.notify_email) body.notify_email = mailTo.trim()
     if (!Object.keys(body).length) {
       setMsg({ text: '没有改动', bad: false })
       return
@@ -103,6 +122,19 @@ export default function ConductorPanel({ onClose, onNotify }: Props) {
       setMsg({ text: e?.message ?? '清除失败', bad: true })
     } finally {
       setBusy('')
+    }
+  }
+
+  const testMail = async () => {
+    setTestBusy(true)
+    setMsg(null)
+    try {
+      const r = await api.testNotify(mailTo.trim())
+      setMsg({ text: `测试邮件已提交到 ${r.to}，去收件箱看看`, bad: false })
+    } catch (e: any) {
+      setMsg({ text: (e?.message ?? '发送失败').replace(/^\d+\s*/, ''), bad: true })
+    } finally {
+      setTestBusy(false)
     }
   }
 
@@ -225,6 +257,37 @@ export default function ConductorPanel({ onClose, onNotify }: Props) {
               只影响拆解风格，不改变输出格式；留空即不追加。{extra.length}/800
             </em>
           </label>
+
+          <div className="fld">
+            <span>余额告警邮件</span>
+            <label className="chk-row">
+              <input
+                type="checkbox"
+                checked={mailOn}
+                onChange={e => setMailOn(e.target.checked)}
+              />
+              <span>余额跌破止损线时发邮件提醒我</span>
+            </label>
+            <input
+              value={mailTo}
+              onChange={e => setMailTo(e.target.value)}
+              placeholder="收件邮箱，例如 you@example.com"
+              spellCheck={false}
+            />
+            <em>
+              {mailInfo?.available
+                ? `从 ${mailInfo.from ?? '智能体邮箱'} 发出 · 同一条告警 6 小时内不重复`
+                : '邮件通道不可用（WorkBuddy 重启后内部端口会变，需重启后端）'}
+            </em>
+            <button
+              className="btn sm"
+              style={{ alignSelf: 'flex-start' }}
+              disabled={!mailTo.trim() || testBusy}
+              onClick={testMail}
+            >
+              {testBusy ? '发送中…' : '发一封测试邮件'}
+            </button>
+          </div>
 
           <div className="drawer-tip">
             key 保存后不会再回传到浏览器：面板里显示的永远是掩码，接口也只返回掩码。 想换 key

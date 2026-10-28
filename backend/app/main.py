@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import appcfg, billing, bridge_watch, engine, handoff, planner, sim, store
+from . import appcfg, billing, bridge_watch, engine, handoff, notify as notifier, planner, sim, store
 from .probe import probe, probe_and_store
 from .bus import BUS
 from .sim import route_scores
@@ -472,6 +472,34 @@ async def billing_status(force: bool = False) -> dict:
     `force=true` 跳过 60 秒缓存，点「刷新余额」时用。
     """
     return billing.status(force=force)
+
+
+@app.get("/api/notify")
+async def notify_status() -> dict:
+    """余额告警邮件的配置与可用性。`from` 是 agent-mail 自己的地址。"""
+    ep = notifier.endpoint()
+    return {
+        "enabled": appcfg.mail_enabled(),
+        "to": appcfg.mail_to(),
+        "from": notifier.identity() if ep else None,
+        "available": ep is not None,
+    }
+
+
+@app.post("/api/notify/test")
+async def notify_test(body: dict) -> dict:
+    """发一封测试邮件，验证收件人填对了、链路能通。"""
+    to = (body or {}).get("to") or None
+    try:
+        return notifier.send(
+            "【AgentMesh】测试邮件",
+            "这是一封测试邮件，收到说明余额告警的邮件通知已配置成功。\n\n"
+            "告警触发条件：云端余额跌破止损线（默认 ¥1），或本地 token 账本用满 95%。\n"
+            "同一等级 6 小时内不重复发送。",
+            to,
+        )
+    except notifier.NotifyUnavailable as e:
+        raise HTTPException(409, str(e))
 
 
 @app.get("/api/conductor")
